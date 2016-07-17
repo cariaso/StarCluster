@@ -1,4 +1,4 @@
-# https://cheminsilico.blogspot.kr/2014/11/tag-your-aws-resources-in-starcluster.html
+# from https://cheminsilico.blogspot.com/2014/11/tag-your-aws-resources-in-starcluster.html
 # Install this file to $HOME/.starcluster/plugins/tagger.py or somewhere on your $PYTHONPATH
 from starcluster.clustersetup import ClusterSetup
 from starcluster.logger import log

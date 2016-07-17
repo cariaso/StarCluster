@@ -18,7 +18,6 @@
 from starcluster import clustersetup
 from starcluster.logger import log
 import boto3
-import botocore.exceptions
 
 
 class EFSPlugin(clustersetup.DefaultClusterSetup):
@@ -77,7 +76,7 @@ class EFSPlugin(clustersetup.DefaultClusterSetup):
             aws_access_key_id=creds.get('aws_access_key_id'),
             aws_secret_access_key=creds.get('aws_secret_access_key'),
             region_name=creds.get('_conn').region.name,
-            )
+        )
         return b3client
 
     def _authorize_efs(self):
@@ -126,7 +125,7 @@ class EFSPlugin(clustersetup.DefaultClusterSetup):
             try:
                 groups.remove(self._new_security_group)
                 found_group = True
-            except ValueError, e:
+            except ValueError:
                 log.info('Expected security group is not currently associated')
                 found_group = False
 
@@ -137,7 +136,7 @@ class EFSPlugin(clustersetup.DefaultClusterSetup):
                 )
                 msg = 'Disassociated EFS security group %s' % (
                     self._new_security_group
-                    )
+                )
                 log.info(msg)
 
     def _get_mount_targets(self, filesystem):

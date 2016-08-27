@@ -122,7 +122,6 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
             inst_sge += '-x '
         inst_sge += '-noremote -auto ./%s' % self.SGE_CONF
         node.ssh.execute(inst_sge, silent=True, only_printable=True)
-
         if exec_host:
             num_slots = self.slots_per_host
             if num_slots is None:

@@ -66,6 +66,20 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
         node.ssh.execute('rm /etc/init.d/sge*', ignore_exit_status=True)
         self._inst_sge(node, exec_host=True)
 
+    def _set_sge_hvmem_node(self, node):
+        # via
+        # https://github.com/meissnert/StarCluster/blob/develop/starcluster/plugins/sge.py
+        mem = float(
+            node.ssh.execute(
+                "free -m | grep -i mem | awk '{print $2}'")[0])/1000
+        slots = int(node.ssh.execute("nproc")[0])
+        log.info("Setting h_vmem %sG on node %s" % (mem, node.alias))
+        log.info("Setting mem_free %sG on node %s" % (mem, node.alias))
+        log.info("Setting slots %s on node %s" % (slots, node.alias))
+        node.ssh.execute(
+            'qconf -rattr exechost complex_values h_vmem=%sG,mem_free=%sG,slots=%s %s' %
+            (mem, mem, slots, node.alias))
+
     def _create_sge_pe(self, name="orte", nodes=None, queue="all.q"):
         """
         Create or update an SGE parallel environment
@@ -107,6 +121,7 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
             inst_sge += '-x '
         inst_sge += '-noremote -auto ./%s' % self.SGE_CONF
         node.ssh.execute(inst_sge, silent=True, only_printable=True)
+
         if exec_host:
             num_slots = self.slots_per_host
             if num_slots is None:
@@ -115,6 +130,16 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
                              node.alias)
             node.ssh.execute('qconf -aattr queue slots "[%s=%d]" all.q' %
                              (node.alias, num_slots))
+            mem = float(
+                node.ssh.execute(
+                    "free -m | grep -i mem | awk '{print $2}'")[0])/1000
+            slots = int(node.ssh.execute("nproc")[0])
+            log.info("Setting h_vmem %sG on node %s" % (mem, node.alias))
+            log.info("Setting mem_free %sG on node %s" % (mem, node.alias))
+            log.info("Setting slots %s on node %s" % (slots, node.alias))
+            node.ssh.execute(
+                'qconf -rattr exechost complex_values h_vmem=%sG,mem_free=%sG,slots=%s %s' %
+                (mem, mem, slots, node.alias))
 
     def _sge_path(self, path):
         return posixpath.join(self.SGE_ROOT, path)
@@ -163,6 +188,13 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
         self._inst_sge(master, exec_host=self.master_is_exec_host)
         # set all.q shell to bash
         master.ssh.execute('qconf -mattr queue shell "/bin/bash" all.q')
+        # make h_vmem a consumable recourse
+        master.ssh.execute(
+            "qconf -sc | sed '/h_vmem              h_vmem     MEMORY      <=    YES         NO         0        0/ c\h_vmem              h_vmem     MEMORY      <=    YES         JOB        0        0' > sge.conf")
+        master.ssh.execute('qconf -Mc sge.conf && rm sge.conf')
+        master.ssh.execute(
+            "qconf -sc | sed '/mem_free              mem_free     MEMORY      <=    YES         NO         0        0/ c\mem_free              mem_free     MEMORY      <=    YES         YES        0         0' > sge.conf")
+        master.ssh.execute('qconf -Mc sge.conf && rm sge.conf')
         for node in self.nodes:
             self.pool.simple_job(self._add_to_sge, (node,), jobid=node.alias)
         self.pool.wait(numtasks=len(self.nodes))
@@ -341,6 +373,7 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
         self._add_sge_submit_host(node)
         self._add_to_sge(node)
         self._create_sge_pe()
+        self._set_sge_hvmem_node(node)
 
         # fix to allow pickling
         self._nodes = None

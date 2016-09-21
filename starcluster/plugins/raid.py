@@ -29,13 +29,47 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
     SETUP_CLASS = starcluster.plugins.efs.EFSPlugin
     mount_point = /mnt/myraid
 
+    # as in /dev/sdf and /dev/xvdf
+    first_device_letter = f
+
+    # eiether provide existing volume IDs
+    #volume_ids = vol-a3e01921,vol-d5e01957
+
+    # or setting for newly created volumes
+    num_volumes = 2
+    volume_size = 5
+    iops = 100
+    #iops = min
+    #iops = max
+
 
     """
 
     def __init__(self, mount_point=None,
+                 volume_ids=None,
+                 num_volumes=None,
+                 first_device_letter=None,
                  **kwargs):
+        if mount_point is None: mount_point = '/mnt/raid'
         self.mount_point = mount_point
-        #self.fs_id = fs_id
+        if first_device_letter:
+            self.first_device_letter = first_device_letter
+        else:
+            self.first_device_letter = 'f'
+        self.volume_ids = volume_ids
+        if not self.volume_ids:
+            self.num_volumes = int(num_volumes)
+            self.volume_size = int(volume_size)
+            if iops:
+                if iops.lower() == 'min':
+                    self.iops = 20 * self.volume_size
+                elif iops.lower() == 'max':
+                    self.iops = 50 * self.volume_size
+                else:
+                    self.iops = int(iops)
+            else:
+                self.iops = 50 * self.volume_size
+            
         super(RAIDPlugin, self).__init__(**kwargs)
 
     def run(self, nodes, master, user, user_shell, volumes):
@@ -46,23 +80,26 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
 
         self._b3client = self._get_boto_client('ec2')
 
-        num_volumes = 2
-        volume_size = 5
-        iops = volume_size * 20 #* 50
         zone = master.ssh.execute('ec2metadata --availability-zone')[0]
         firstdeviceletter = 'g'
 
-        volumeIds = []
+        if self.volume_ids:
+            volumeIds = self.volume_ids.split(',')
+            make_volumes = False
+        else:
+            volumeIds = []
+            make_volumes = True
+
         devices = []
 
-        if True:
-            for i in range(num_volumes):
+        if make_volumes:
+            for i in range(self.num_volumes):
                 response = self._b3client.create_volume(
                     DryRun=False,
-                    Size=volume_size,
+                    Size=self.volume_size,
                     AvailabilityZone=zone,
                     VolumeType='io1',#'gp2'
-                    Iops=iops,
+                    Iops=self.iops,
                 )
                 #print response
                 volumeIds.append(response.get('VolumeId'))
@@ -209,76 +246,3 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
         )
         return b3client
 
-    # def _authorize_efs(self):
-
-    #     self._b3client = self._get_efs_client()
-
-    #     mount_targets = self._get_mount_targets(self.fs_id)
-
-    #     for targetinfo in mount_targets:
-    #         log.info('Authorizing EFS security group')
-    #         resp = self._b3client.describe_mount_target_security_groups(
-    #             MountTargetId=targetinfo.get('MountTargetId'),
-    #         )
-    #         oldgroups = resp['SecurityGroups']
-    #         oldgroups.append(self._new_security_group)
-    #         newgroups = list(set(oldgroups))
-
-    #         self._b3client.modify_mount_target_security_groups(
-    #             MountTargetId=targetinfo.get('MountTargetId'),
-    #             SecurityGroups=newgroups,
-    #         )
-
-    # def _deauthorize_efs(self):
-
-    #     self._b3client = self._get_efs_client()
-
-    #     mount_targets = self._get_mount_targets(self.fs_id)
-
-    #     for targetinfo in mount_targets:
-    #         resp = self._b3client.describe_mount_target_security_groups(
-    #             MountTargetId=targetinfo.get('MountTargetId'),
-    #         )
-    #         groups = resp['SecurityGroups']
-    #         found_group = None
-    #         try:
-    #             groups.remove(self._new_security_group)
-    #             found_group = True
-    #         except ValueError:
-    #             log.info('Expected security group is not currently associated')
-    #             found_group = False
-
-    #         if found_group:
-    #             self._b3client.modify_mount_target_security_groups(
-    #                 MountTargetId=targetinfo.get('MountTargetId'),
-    #                 SecurityGroups=groups,
-    #             )
-    #             msg = 'Disassociated EFS security group %s' % (
-    #                 self._new_security_group
-    #             )
-    #             log.info(msg)
-
-    # def _get_mount_targets(self, fs_id):
-    #     mtresponse = self._b3client.describe_mount_targets(FileSystemId=fs_id)
-    #     mts = mtresponse.get('MountTargets')
-    #     return mts
-
-    # def _install_efs_on_node(self, node):
-    #     if not node.ssh.path_exists(self.mount_point):
-    #         node.ssh.makedirs(self.mount_point, mode=0777)
-    #     zone = node.ssh.execute('ec2metadata --availability-zone')[0]
-    #     region = zone[:-1]
-    #     name_parts = [zone, self.fs_id, 'efs', region, 'amazonaws', 'com']
-    #     efs_dns = '.'.join(name_parts)
-    #     mount_info = node.ssh.execute('grep %s /proc/mounts' %
-    #                                   self.mount_point, raise_on_failure=False,
-    #                                   ignore_exit_status=True)
-    #     log.warn('%s using sync mount' % self.mount_point)
-    #     #cmd = 'mount -t nfs4 -ominorversion=1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,sync,noac,dirsync, %s:/ %s' % (efs_dns,
-    #     cmd = 'mount -t nfs4 -ominorversion=1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 %s:/ %s' % (efs_dns,
-    #                                                       self.mount_point)
-    #     if mount_info:
-    #         log.warn('%s is already a mount point' % self.mount_point)
-    #         log.info(mount_info[0])
-    #     else:
-    #         node.ssh.execute(cmd)

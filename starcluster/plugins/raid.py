@@ -44,11 +44,12 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
 
 
     """
-
     def __init__(self, mount_point=None,
                  volume_ids=None,
                  num_volumes=None,
                  first_device_letter=None,
+                 volume_size=None,
+                 iops=None,
                  **kwargs):
         if mount_point is None: mount_point = '/mnt/raid'
         self.mount_point = mount_point
@@ -77,6 +78,7 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
         self._new_security_group = master.cluster_groups[0].id
 
         log.info("Configuring RAID")
+        master.ssh.execute('apt-get install -y lvm2')
 
         self._b3client = self._get_boto_client('ec2')
 
@@ -191,7 +193,7 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
             #https://sysadmincasts.com/episodes/27-lvm-linear-vs-striped-logical-volumes
             numstripes = len(xvnames)
             #cmd = 'lvcreate --extents 100%%FREE --stripes %s --stripesize 256 --name %s %s' % (numstripes, lvname, fileservername)
-            cmd = 'lvcreate --yes --extents 100%%FREE --stripes %s --name %s %s' % (numstripes, lvname, fileservername)
+            cmd = 'lvcreate --extents 100%%FREE --stripes %s --name %s %s' % (numstripes, lvname, fileservername)
             print cmd
             master.ssh.execute(cmd)
 

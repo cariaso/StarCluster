@@ -44,11 +44,12 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
 
 
     """
-
     def __init__(self, mount_point=None,
                  volume_ids=None,
                  num_volumes=None,
                  first_device_letter=None,
+                 volume_size=None,
+                 iops=None,
                  **kwargs):
         if mount_point is None: mount_point = '/mnt/raid'
         self.mount_point = mount_point
@@ -69,14 +70,21 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
                     self.iops = int(iops)
             else:
                 self.iops = 50 * self.volume_size
-            
+
         super(RAIDPlugin, self).__init__(**kwargs)
 
     def run(self, nodes, master, user, user_shell, volumes):
         self._master = master
         self._new_security_group = master.cluster_groups[0].id
 
+
         log.info("Configuring RAID")
+        try:
+            master.ssh.execute('apt-get -y purge unattended-upgrades')
+        except Exception, e:
+            print ('exception %s while trying to purge unattended-upgrades' % e)
+
+        master.ssh.execute('apt-get install -y lvm2')
 
         self._b3client = self._get_boto_client('ec2')
 
@@ -129,15 +137,20 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
                 waiter.wait(VolumeIds=[volumeId])
                 print 'Volume %s is in use' % volumeId
 
- 
+
                 print 'Waiting for volume to switch to attached state'
                 while self._b3client.describe_volumes(VolumeIds=[volumeId])['Volumes'][0]['Attachments'][0]['State'] != 'attached':
                     time.sleep(3)
                 print 'Volume %s is attached' % volumeId
- 
+
+
+        lvname = 'fastdisk'
+        fileservername = 'fileserver'
+        devname = '/dev/%s/%s' % (fileservername, lvname)
 
         xvnames = []
-        if True:
+        wipe_drive = False
+        if wipe_drive:
             for device in devices:
                 xvname = device.replace('/sd','/xvd')
                 cmd = 'parted %s -s mklabel gpt unit TB mkpart primary 0 100%%' % xvname
@@ -153,9 +166,6 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
 #            pdb.set_trace()
 
 
-            lvname = 'fastdisk'
-            fileservername = 'fileserver'
-            devname = '/dev/%s/%s' % (fileservername, lvname)
 
             cmd = 'umount %s' % devname
             print cmd
@@ -191,7 +201,7 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
             #https://sysadmincasts.com/episodes/27-lvm-linear-vs-striped-logical-volumes
             numstripes = len(xvnames)
             #cmd = 'lvcreate --extents 100%%FREE --stripes %s --stripesize 256 --name %s %s' % (numstripes, lvname, fileservername)
-            cmd = 'lvcreate --yes --extents 100%%FREE --stripes %s --name %s %s' % (numstripes, lvname, fileservername)
+            cmd = 'lvcreate --extents 100%%FREE --stripes %s --name %s %s' % (numstripes, lvname, fileservername)
             print cmd
             master.ssh.execute(cmd)
 
@@ -200,13 +210,13 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
             master.ssh.execute(cmd)
 
 
-            cmd = 'mkdir -p %s' % (self.mount_point)
-            print cmd
-            master.ssh.execute(cmd)
+        cmd = 'mkdir -p %s' % (self.mount_point)
+        print cmd
+        master.ssh.execute(cmd)
 
-            cmd = 'mount %s %s' % (devname, self.mount_point)
-            print cmd
-            master.ssh.execute(cmd)
+        cmd = 'mount %s %s' % (devname, self.mount_point)
+        print cmd
+        master.ssh.execute(cmd)
 
         log.info('semi-done')
 
@@ -245,4 +255,3 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
             region_name=creds.get('_conn').region.name,
         )
         return b3client
-

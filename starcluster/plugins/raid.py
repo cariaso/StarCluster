@@ -79,12 +79,42 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
 
 
         log.info("Configuring RAID")
-        try:
-            master.ssh.execute('apt-get -y purge unattended-upgrades')
-        except Exception, e:
-            print ('exception %s while trying to purge unattended-upgrades' % e)
 
-        master.ssh.execute('apt-get install -y lvm2')
+        # do a suitable check for lvm2
+        needs_lvm2 = True
+        if needs_lvm2:
+            try:
+                node.ssh.execute("echo 'APT::Periodic::Enable \"0\";' >> /etc/apt/apt.conf.d/10periodic")
+            except Exception, e:
+                print e
+                log.warn(e)
+
+            # Ubuntu 16 has a very stupid new default
+            # https://github.com/geerlingguy/packer-ubuntu-1604/issues/3#issue-154560190
+            try:
+                log.info("killing any running apt-get")
+                node.ssh.execute("killall apt-get")
+                node.ssh.execute("dpkg --configure -a")
+                node.ssh.execute("apt-get update")
+                node.ssh.execute("apt-get upgrade")
+                log.info("clean kill")
+            except Exception, e:
+                log.info("not a clean kill")
+                print e
+                log.warn(e)
+
+
+            try:
+                log.info("purge unattended-upgrades")
+                node.ssh.execute('apt-get -y purge unattended-upgrades')
+                log.info("purged unattended-upgrades")
+            except Exception, e:
+                log.info("purge unattended-upgrades failed")
+                print e
+                log.warn(e)
+        
+
+            master.ssh.execute('apt-get install -y lvm2')
 
         self._b3client = self._get_boto_client('ec2')
 

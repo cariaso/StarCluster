@@ -50,6 +50,7 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
                  first_device_letter=None,
                  volume_size=None,
                  iops=None,
+                 wipe_drive=None,
                  **kwargs):
         if mount_point is None: mount_point = '/mnt/raid'
         self.mount_point = mount_point
@@ -70,6 +71,14 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
                     self.iops = int(iops)
             else:
                 self.iops = 50 * self.volume_size
+
+        if wipe_drive:
+            self.wipe_drive = bool(wipe_drive)
+            if self.wipe_drive:
+                print('Allowed to wipe the drive!')
+                log.warn("Allowed to wipe the drive")
+        else:
+            self.wipe_drive = False
 
         super(RAIDPlugin, self).__init__(**kwargs)
 
@@ -179,8 +188,7 @@ class RAIDPlugin(clustersetup.DefaultClusterSetup):
         devname = '/dev/%s/%s' % (fileservername, lvname)
 
         xvnames = []
-        wipe_drive = False
-        if wipe_drive:
+        if self.wipe_drive:
             for device in devices:
                 xvname = device.replace('/sd','/xvd')
                 cmd = 'parted %s -s mklabel gpt unit TB mkpart primary 0 100%%' % xvname

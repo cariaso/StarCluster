@@ -11,7 +11,8 @@ class TaggerPlugin(ClusterSetup):
         volumes = [v for v in node.instance.connection.get_all_volumes() if v.attach_data.instance_id == node.instance.id]
         for volume in volumes:
 	    log.info("Applying tags %s to %s" % (self.tags, volume))
-            volume.add_tags(self.tags)
+            for tag,value in self.tags.iteritems():
+                volume.add_tag(tag, value)
 
     def run(self, nodes, master, user, user_shell, volumes):
         log.info("Tagging all nodes...")
@@ -30,4 +31,3 @@ class TaggerPlugin(ClusterSetup):
 	    log.info("Applying tag - {0}: {1}".format(tag, val))
 	    node.add_tag(tag, val)
         self.set_volume_tags(node)
-
